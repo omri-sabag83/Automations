@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
+
+# per-automation run logs (kept locally, not in history)
+*/logs/
+logs/
+
+# local secrets / config overrides
+.env
+config.local.*
+
+# automation outputs stay local — they can contain private / client work.
+# (covers each automation's running log and its _preview.md dry-run scratch)
+# ignore the contents, not the dir itself, so .gitkeep can be re-included
+*/output/*
+!*/output/.gitkeep
