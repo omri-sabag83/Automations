@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.omrisabag.github-weekly-summary</string>
+
+    <!-- Absolute paths: launchd has no shell, no cwd, no PATH of its own. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/anaconda3/bin/python</string>
+        <string>/Users/omrisabag/Documents/Python_Projects/Automations/02_github_weekly_summary/run.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/omrisabag/Documents/Python_Projects/Automations/02_github_weekly_summary</string>
+
+    <!-- So run.py's bare `claude` subprocess call resolves. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/anaconda3/bin:/Users/omrisabag/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <!-- Thursday (Weekday 4) at 22:00, in whatever timezone the Mac is set to
+         (Asia/Jerusalem). A slot missed while asleep runs on the next wake. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>4</integer>
+        <key>Hour</key>
+        <integer>22</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- Installing the agent should not itself trigger a run; kickstart does. -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/omrisabag/Documents/Python_Projects/Automations/02_github_weekly_summary/logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/omrisabag/Documents/Python_Projects/Automations/02_github_weekly_summary/logs/launchd.err.log</string>
+</dict>
+</plist>
