@@ -106,7 +106,8 @@ For each repo that had activity: a line `**<repo>** - <N> commits`, then 1-3 \
 bullets describing what actually changed in judgement terms (features, fixes, \
 docs, new work, refactors) - not a paraphrase of every commit message. If a \
 repo saw only trivial churn (a formatting pass, a typo fix), fold it into a \
-single line instead of its own block.
+single line instead of its own block. Write each repo name as plain bold \
+`**<repo>**` - a later step turns it into a link; do not add your own links.
 
 ### Issues & PRs
 Only what is worth noting - opened, merged, closed, or real discussion. If \
@@ -221,7 +222,7 @@ def _iso_utc(local: dt.datetime) -> str:
     return local.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def gather_activity(start: dt.datetime, end: dt.datetime) -> tuple[str, dict]:
+def gather_activity(start: dt.datetime, end: dt.datetime) -> tuple[str, dict, list]:
     start_iso, end_iso = _iso_utc(start), _iso_utc(end)
 
     if REPOS:
@@ -232,6 +233,7 @@ def gather_activity(start: dt.datetime, end: dt.datetime) -> tuple[str, dict]:
 
     totals = {"commits": 0, "repos_active": 0, "issues": 0, "prs": 0}
     blocks: list[str] = []
+    active: list[str] = []
 
     for name in sorted(repo_names):
         commits = _gh_paged(
@@ -248,6 +250,7 @@ def gather_activity(start: dt.datetime, end: dt.datetime) -> tuple[str, dict]:
         if not commits and not issues:
             continue
 
+        active.append(name)
         totals["commits"] += len(commits)
         totals["repos_active"] += 1
         totals["issues"] += len(issues) - len(prs)
@@ -275,7 +278,21 @@ def gather_activity(start: dt.datetime, end: dt.datetime) -> tuple[str, dict]:
     digest = "\n\n".join(blocks) if blocks else "(no repository activity in the window)"
     if len(digest) > MAX_DIGEST_CHARS:
         digest = digest[:MAX_DIGEST_CHARS] + "\n... (digest truncated)"
-    return digest, totals
+    return digest, totals, active
+
+
+def link_repo_names(entry: str, repo_names: list[str]) -> str:
+    """Turn bold repo names (`**name**`) into underlined links to the repo."""
+    if not repo_names:
+        return entry
+    pattern = re.compile(
+        r"\*\*(" + "|".join(re.escape(n) for n in repo_names) + r")\*\*"
+    )
+    return pattern.sub(
+        lambda m: f"**[<ins>{m.group(1)}</ins>]"
+                  f"(https://github.com/{GITHUB_USER}/{m.group(1)})**",
+        entry,
+    )
 
 
 def generate_entry(
@@ -392,7 +409,7 @@ def main(argv: list[str] | None = None) -> int:
     log(f"{mode} start - week ending {anchor_date} ({start_s} -> {end_s} {RUN_TIMEZONE})")
 
     try:
-        digest, totals = gather_activity(start, anchor)
+        digest, totals, active = gather_activity(start, anchor)
     except GatherError as exc:
         log(f"ERROR gathering GitHub activity: {exc}")
         return 1
@@ -410,6 +427,7 @@ def main(argv: list[str] | None = None) -> int:
         log(f"ERROR: {exc}")
         return 1
 
+    entry = link_repo_names(entry, active)
     new_body = upsert_entry(entry, anchor_date)
 
     if args.dry_run:
