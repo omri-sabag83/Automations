@@ -28,8 +28,12 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
+import random
 import re
 import subprocess
+import time
+import traceback
 from pathlib import Path
 
 # ------------------------------------------------------------------- schedule
@@ -133,7 +137,7 @@ Files created or modified (path relative to Python_Projects/):
 
 
 # ------------------------------------------------------------------- helpers
-# Set False by --dry-run so test runs never touch logs/run.log.
+# Set False by --dry-run so test runs never touch logs/run.log or state/.
 _LOG_TO_FILE = True
 
 
@@ -145,6 +149,56 @@ def log(msg: str) -> None:
     stamp = dt.datetime.now().isoformat(timespec="seconds")
     with LOG_FILE.open("a") as fh:
         fh.write(f"{stamp}  {msg}\n")
+
+
+# ------------------------------------------------------------ failure handling
+# Identical block across automations 01 / 02 / 03 (02 & 03 add _TransientHTTP).
+STATE_FILE = HERE / "state" / "last_run.json"
+_RUN: dict = {"status": "error", "detail": "run did not complete", "entry": None}
+
+
+class ClaudeError(RuntimeError):
+    """A retryable `claude` CLI failure (non-zero exit / timeout)."""
+
+
+def _record(status: str, detail: str, entry: str | None = None) -> None:
+    _RUN.update(status=status, detail=detail)
+    if entry is not None:
+        _RUN["entry"] = entry
+
+
+def _retry(fn, *, attempts: int, base_delay: float, transient: tuple):
+    for i in range(attempts):
+        try:
+            return fn()
+        except transient as exc:
+            if i == attempts - 1:
+                raise
+            wait = base_delay * (2 ** i) + random.uniform(0, base_delay)
+            log(f"transient failure ({exc}); retry {i + 1}/{attempts - 1} "
+                f"in {wait:.1f}s")
+            time.sleep(wait)
+
+
+def write_state(exit_code: int, started_at: str) -> None:
+    prev: dict = {}
+    try:
+        prev = json.loads(STATE_FILE.read_text())
+    except Exception:  # noqa: BLE001 - missing / unreadable is fine
+        pass
+    cf = int(prev.get("consecutive_failures", 0))
+    cf = cf + 1 if _RUN["status"] == "error" else 0
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    STATE_FILE.write_text(json.dumps({
+        "automation": HERE.name,
+        "started_at": started_at,
+        "finished_at": dt.datetime.now().isoformat(timespec="seconds"),
+        "status": _RUN["status"],
+        "exit_code": exit_code,
+        "entry": _RUN["entry"],
+        "detail": _RUN["detail"],
+        "consecutive_failures": cf,
+    }, indent=2) + "\n")
 
 
 def yesterday_window(today: dt.date) -> tuple[dt.datetime, dt.datetime]:
@@ -233,22 +287,28 @@ def generate_entry(
         print("\n----- PROMPT SENT TO CLAUDE -----")
         print(prompt)
         print("----- END PROMPT -----\n")
-    proc = subprocess.run(
-        [
-            CLAUDE_BIN, "-p", prompt,
-            "--output-format", "text",
-            "--permission-mode", "dontAsk",
-            "--allowedTools", "WebSearch", "WebFetch",
-            "--model", CLAUDE_MODEL,
-        ],
-        capture_output=True, text=True, timeout=CLAUDE_TIMEOUT_S, cwd=str(HERE),
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"claude CLI exited {proc.returncode}\n{proc.stderr.strip()}"
-        )
 
-    entry = proc.stdout.strip()
+    def _call() -> str:
+        proc = subprocess.run(
+            [
+                CLAUDE_BIN, "-p", prompt,
+                "--output-format", "text",
+                "--permission-mode", "dontAsk",
+                "--allowedTools", "WebSearch", "WebFetch",
+                "--model", CLAUDE_MODEL,
+            ],
+            capture_output=True, text=True, timeout=CLAUDE_TIMEOUT_S, cwd=str(HERE),
+        )
+        if proc.returncode != 0:
+            raise ClaudeError(
+                f"claude CLI exited {proc.returncode}\n{proc.stderr.strip()}"
+            )
+        return proc.stdout
+
+    raw = _retry(_call, attempts=2, base_delay=5,
+                 transient=(ClaudeError, subprocess.TimeoutExpired))
+
+    entry = raw.strip()
     if entry.startswith("```"):
         entry = entry.split("\n", 1)[1] if "\n" in entry else ""
         entry = entry.rstrip()
@@ -344,6 +404,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     except Exception as exc:  # noqa: BLE001 - keep the existing file intact
         log(f"ERROR: {exc}")
+        _record("error", str(exc), entry=today_s)
         return 1
 
     new_body = upsert_entry(entry, today_s)
@@ -358,9 +419,25 @@ def main(argv: list[str] | None = None) -> int:
 
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_FILE.write_text(new_body)
-    log(f"wrote {OUTPUT_FILE.relative_to(PROJECTS_ROOT)} ({len(new_body)} bytes)")
+    detail = f"wrote {OUTPUT_FILE.relative_to(PROJECTS_ROOT)} ({len(new_body)} bytes)"
+    log(detail)
+    _record("ok", detail, entry=today_s)
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    _started = dt.datetime.now().isoformat(timespec="seconds")
+    _code, _ran = 1, False
+    try:
+        _code = main()
+        _ran = True
+    except Exception as exc:  # noqa: BLE001 - record, then re-raise the exit
+        _record("error", f"uncaught: {exc!r}")
+        traceback.print_exc()
+        _ran = True
+    finally:
+        # skip on --help / bad args (SystemExit from argparse, _ran stays False)
+        # and on --dry-run (_LOG_TO_FILE is False)
+        if _ran and _LOG_TO_FILE:
+            write_state(_code, _started)
+    raise SystemExit(_code)

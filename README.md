@@ -13,13 +13,18 @@ add complexity over time.
 
 - **One folder per automation**, named `NN_short_name/`.
 - Each folder is self-contained: its own `README.md`, entrypoint (`run.py`),
-  and `logs/`.
+  `logs/`, and `state/`.
 - Config or secrets that must not be committed go in `.env` / `config.local.*`
   (both gitignored).
-- Outputs worth keeping (an accumulating log of knowledge, a report) are
-  committed. Run logs and scratch are not.
+- Outputs, run logs, and `state/` stay local (gitignored). Code + docs are
+  committed.
 - Automations begin **manual**. Once one has earned trust, it graduates to a
   scheduler (macOS `launchd`, or GitHub Actions).
+- **Failure handling** (all automations): transient failures retry with backoff;
+  a per-item failure degrades gracefully rather than aborting the run; every
+  real run writes `state/last_run.json` (`status`, `detail`,
+  `consecutive_failures`). No alerting yet — see each README's *Failure
+  handling* section.
 
 ## Environment
 

@@ -106,6 +106,35 @@ private repos later, set `GITHUB_TOKEN` in the environment or add a
 `GITHUB_TOKEN=...` line to a gitignored `.env` in this folder; `run.py` picks it
 up automatically.
 
+## Failure handling
+
+- **Fail-safe & idempotent** — the log is written only after a successful
+  generation; re-running a week just replaces that entry.
+- **Retry with backoff** — GitHub calls retry up to 3× (2s, 4s, … + jitter) on
+  `5xx` / connection errors; the `claude` call retries once. Rate-limit (`403`),
+  auth (`401`) and `404` fail fast — retrying won't help.
+- **Graceful degradation** — if one repo's API calls fail, it's logged and
+  skipped, the rest of the summary is still produced, the digest carries a
+  `PARTIAL:` note, and the run records `status:"partial"` (exit 0). The run only
+  aborts if the repo-list call fails or **every** repo fails.
+- **`state/last_run.json`** — written on every real run (not `--dry-run`):
+
+  ```json
+  {
+    "automation": "02_github_weekly_summary",
+    "started_at": "...", "finished_at": "...",
+    "status": "ok" | "partial" | "error",
+    "exit_code": 0,
+    "entry": "2026-09-10",
+    "detail": "wrote ... (3458 bytes)",
+    "consecutive_failures": 0
+  }
+  ```
+
+  `consecutive_failures` increments on each `error` (not `partial`) and resets on
+  a clean run. **No alerting yet** — check this file or `logs/run.log`.
+  Notifications are a planned next layer.
+
 ## How it's scheduled
 
 A launch agent, [`schedule/com.omrisabag.github-weekly-summary.plist`](schedule/com.omrisabag.github-weekly-summary.plist):

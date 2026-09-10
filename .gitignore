@@ -6,9 +6,11 @@ __pycache__/
 # macOS
 .DS_Store
 
-# per-automation run logs (kept locally, not in history)
+# per-automation run logs + run-status files (kept locally, not in history)
 */logs/
 logs/
+*/state/*
+!*/state/.gitkeep
 
 # local secrets / config overrides
 .env
