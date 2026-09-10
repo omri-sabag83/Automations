@@ -7,6 +7,7 @@ add complexity over time.
 |---|---|---|---|---|
 | 01 | [daily_ai_briefing](01_daily_ai_briefing/) | Builds a daily AI + data-analytics learning briefing (one AI development, one analyst topic, one learning prompt, a recap of yesterday's Python_Projects work) and prepends it to a running log | Scheduled — launchd, daily 08:00 Asia/Jerusalem (`python run.py` for manual/testing) | Active |
 | 02 | [github_weekly_summary](02_github_weekly_summary/) | Weekly judged digest of GitHub repo activity (commits, repos touched, issues/PRs, notable changes, a short read) prepended to a running log | Scheduled — launchd, Thu 22:00 Asia/Jerusalem (`python run.py` for manual/testing) | Active |
+| 03 | [github_weekly_trend](03_github_weekly_trend/) | Weekly analytical trend report on repo activity — active / dormant, WoW change, 13-week patterns, metrics table + trend & snapshot charts; keeps last 13 entries (newest keeps charts, older trimmed to prose) | Scheduled — launchd, Sun 10:00 Asia/Jerusalem (`python run.py` for manual/testing) | Active |
 
 ## Conventions
 
