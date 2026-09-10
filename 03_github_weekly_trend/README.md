@@ -142,6 +142,37 @@ by week client-side). To raise the limit or include private repos later, set
 `GITHUB_TOKEN` in the environment or add `GITHUB_TOKEN=...` to a gitignored
 `.env` in this folder.
 
+## Failure handling
+
+- **Fail-safe & idempotent** — the log + charts are written only after a
+  successful generation; re-running a week just replaces that entry and its
+  charts.
+- **Retry with backoff** — GitHub calls retry up to 3× (2s, 4s, … + jitter) on
+  `5xx` / connection errors; the `claude` call retries once. Rate-limit (`403`),
+  auth (`401`) and `404` fail fast.
+- **Graceful degradation** — a repo whose commits can't be fetched is logged and
+  dropped from the report; the rest still renders, the digest carries a
+  `PARTIAL:` note, and the run records `status:"partial"` (exit 0). Aborts only
+  if the repo-list call fails or **every** repo fails.
+- **`state/last_run.json`** — written on every real run (not `--dry-run` /
+  `--demo`):
+
+  ```json
+  {
+    "automation": "03_github_weekly_trend",
+    "started_at": "...", "finished_at": "...",
+    "status": "ok" | "partial" | "error",
+    "exit_code": 0,
+    "entry": "2026-09-06",
+    "detail": "wrote ... ; 1 entry kept; 0 old chart(s) removed",
+    "consecutive_failures": 0
+  }
+  ```
+
+  `consecutive_failures` increments on each `error` (not `partial`) and resets on
+  a clean run. **No alerting yet** — check this file or `logs/run.log`.
+  Notifications are a planned next layer.
+
 ## How it's scheduled
 
 A launch agent, [`schedule/com.omrisabag.github-weekly-trend.plist`](schedule/com.omrisabag.github-weekly-trend.plist):

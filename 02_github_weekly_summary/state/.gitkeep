@@ -1,0 +1,2 @@
+# run.py writes last_run.json here on every real run. Gitignored; this file
+# only keeps the folder present on a fresh clone.

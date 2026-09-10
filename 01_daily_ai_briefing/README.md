@@ -143,6 +143,31 @@ v1 keeps settings as constants at the top of `run.py` (`CLAUDE_MODEL`,
 `config.yaml` is a later step, once there's a second automation to share
 patterns with.
 
+## Failure handling
+
+- **Fail-safe & idempotent** — the log is written only after a successful
+  generation, so a failure never half-writes it; re-running any date just
+  replaces that entry.
+- **Retry with backoff** — the `claude` call is retried once (5s + jitter) on a
+  non-zero exit or timeout. Non-transient errors (bad output shape) fail fast.
+- **`state/last_run.json`** — written on every real run (not `--dry-run`):
+
+  ```json
+  {
+    "automation": "01_daily_ai_briefing",
+    "started_at": "...", "finished_at": "...",
+    "status": "ok" | "error",
+    "exit_code": 0,
+    "entry": "2026-09-10",
+    "detail": "wrote ... (3458 bytes)",
+    "consecutive_failures": 0
+  }
+  ```
+
+  `consecutive_failures` increments on each `error` and resets to `0` on success.
+  There is **no alerting yet** — check this file (or `logs/run.log`) to see if
+  the last scheduled run was healthy. Notifications are a planned next layer.
+
 ## How the schedule works
 
 `launchd` is macOS's built-in job scheduler (the modern replacement for `cron`,

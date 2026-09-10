@@ -31,8 +31,11 @@ import argparse
 import datetime as dt
 import json
 import os
+import random
 import re
 import subprocess
+import time
+import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -134,7 +137,7 @@ End the entry with a line containing only three dashes:
 
 
 # ------------------------------------------------------------------- helpers
-# Set False by --dry-run so test runs never touch logs/run.log.
+# Set False by --dry-run so test runs never touch logs/run.log or state/.
 _LOG_TO_FILE = True
 
 
@@ -150,6 +153,60 @@ def log(msg: str) -> None:
 
 class GatherError(RuntimeError):
     """A GitHub API / network failure that should abort without touching files."""
+
+
+class _TransientHTTP(GatherError):
+    """A retryable GitHub failure (5xx / connection error). Still a GatherError."""
+
+
+# ------------------------------------------------------------ failure handling
+# Identical block across automations 01 / 02 / 03 (01 omits _TransientHTTP).
+STATE_FILE = HERE / "state" / "last_run.json"
+_RUN: dict = {"status": "error", "detail": "run did not complete", "entry": None}
+
+
+class ClaudeError(RuntimeError):
+    """A retryable `claude` CLI failure (non-zero exit / timeout)."""
+
+
+def _record(status: str, detail: str, entry: str | None = None) -> None:
+    _RUN.update(status=status, detail=detail)
+    if entry is not None:
+        _RUN["entry"] = entry
+
+
+def _retry(fn, *, attempts: int, base_delay: float, transient: tuple):
+    for i in range(attempts):
+        try:
+            return fn()
+        except transient as exc:
+            if i == attempts - 1:
+                raise
+            wait = base_delay * (2 ** i) + random.uniform(0, base_delay)
+            log(f"transient failure ({exc}); retry {i + 1}/{attempts - 1} "
+                f"in {wait:.1f}s")
+            time.sleep(wait)
+
+
+def write_state(exit_code: int, started_at: str) -> None:
+    prev: dict = {}
+    try:
+        prev = json.loads(STATE_FILE.read_text())
+    except Exception:  # noqa: BLE001 - missing / unreadable is fine
+        pass
+    cf = int(prev.get("consecutive_failures", 0))
+    cf = cf + 1 if _RUN["status"] == "error" else 0
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    STATE_FILE.write_text(json.dumps({
+        "automation": HERE.name,
+        "started_at": started_at,
+        "finished_at": dt.datetime.now().isoformat(timespec="seconds"),
+        "status": _RUN["status"],
+        "exit_code": exit_code,
+        "entry": _RUN["entry"],
+        "detail": _RUN["detail"],
+        "consecutive_failures": cf,
+    }, indent=2) + "\n")
 
 
 def most_recent_anchor(now: dt.datetime) -> dt.datetime:
@@ -188,17 +245,23 @@ def _gh_get(path: str, params: dict | None = None) -> tuple[object, str]:
     token = _github_token()
     if token:
         req.add_header("Authorization", f"Bearer {token}")
-    try:
-        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_S) as resp:
-            return json.loads(resp.read().decode()), resp.headers.get("Link", "")
-    except urllib.error.HTTPError as exc:
-        extra = ""
-        if exc.code == 403 and exc.headers.get("X-RateLimit-Remaining") == "0":
-            extra = (f" (unauthenticated rate limit exhausted; resets at epoch "
-                     f"{exc.headers.get('X-RateLimit-Reset', '?')})")
-        raise GatherError(f"GitHub API {exc.code} for {path}{extra}") from exc
-    except urllib.error.URLError as exc:
-        raise GatherError(f"network error for {path}: {exc.reason}") from exc
+
+    def _once() -> tuple[object, str]:
+        try:
+            with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_S) as resp:
+                return json.loads(resp.read().decode()), resp.headers.get("Link", "")
+        except urllib.error.HTTPError as exc:
+            if exc.code in (500, 502, 503, 504):
+                raise _TransientHTTP(f"GitHub API {exc.code} for {path}") from exc
+            extra = ""
+            if exc.code == 403 and exc.headers.get("X-RateLimit-Remaining") == "0":
+                extra = (f" (unauthenticated rate limit exhausted; resets at epoch "
+                         f"{exc.headers.get('X-RateLimit-Reset', '?')})")
+            raise GatherError(f"GitHub API {exc.code} for {path}{extra}") from exc
+        except urllib.error.URLError as exc:
+            raise _TransientHTTP(f"network error for {path}: {exc.reason}") from exc
+
+    return _retry(_once, attempts=3, base_delay=2, transient=(_TransientHTTP,))
 
 
 def _gh_paged(path: str, params: dict | None = None) -> list:
@@ -222,7 +285,7 @@ def _iso_utc(local: dt.datetime) -> str:
     return local.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def gather_activity(start: dt.datetime, end: dt.datetime) -> tuple[str, dict, list]:
+def gather_activity(start: dt.datetime, end: dt.datetime) -> tuple[str, dict, list, list]:
     start_iso, end_iso = _iso_utc(start), _iso_utc(end)
 
     if REPOS:
@@ -234,16 +297,22 @@ def gather_activity(start: dt.datetime, end: dt.datetime) -> tuple[str, dict, li
     totals = {"commits": 0, "repos_active": 0, "issues": 0, "prs": 0}
     blocks: list[str] = []
     active: list[str] = []
+    failed: list[str] = []
 
     for name in sorted(repo_names):
-        commits = _gh_paged(
-            f"/repos/{GITHUB_USER}/{name}/commits",
-            {"since": start_iso, "until": end_iso},
-        )
-        issues = _gh_paged(
-            f"/repos/{GITHUB_USER}/{name}/issues",
-            {"since": start_iso, "state": "all", "sort": "updated"},
-        )
+        try:
+            commits = _gh_paged(
+                f"/repos/{GITHUB_USER}/{name}/commits",
+                {"since": start_iso, "until": end_iso},
+            )
+            issues = _gh_paged(
+                f"/repos/{GITHUB_USER}/{name}/issues",
+                {"since": start_iso, "state": "all", "sort": "updated"},
+            )
+        except GatherError as exc:
+            log(f"[{name}] skipped: {exc}")
+            failed.append(name)
+            continue
         issues = [i for i in issues if i.get("updated_at", "") < end_iso]
         prs = [i for i in issues if "pull_request" in i]
 
@@ -275,10 +344,15 @@ def gather_activity(start: dt.datetime, end: dt.datetime) -> tuple[str, dict, li
             lines.append(f"- ... (+{len(issues) - ISSUE_CAP} more issues/PRs)")
         blocks.append("\n".join(lines))
 
+    if failed and len(failed) == len(repo_names):
+        raise GatherError(f"all {len(failed)} repos failed to fetch: {', '.join(failed)}")
+
     digest = "\n\n".join(blocks) if blocks else "(no repository activity in the window)"
     if len(digest) > MAX_DIGEST_CHARS:
         digest = digest[:MAX_DIGEST_CHARS] + "\n... (digest truncated)"
-    return digest, totals, active
+    if failed:
+        digest = f"PARTIAL: could not fetch {', '.join(failed)}\n\n" + digest
+    return digest, totals, active, failed
 
 
 def link_repo_names(entry: str, repo_names: list[str]) -> str:
@@ -307,19 +381,23 @@ def generate_entry(
         print("\n----- PROMPT SENT TO CLAUDE -----")
         print(prompt)
         print("----- END PROMPT -----\n")
-    proc = subprocess.run(
-        [
-            CLAUDE_BIN, "-p", prompt,
-            "--output-format", "text",
-            "--permission-mode", "dontAsk",
-            "--model", CLAUDE_MODEL,
-        ],
-        capture_output=True, text=True, timeout=CLAUDE_TIMEOUT_S, cwd=str(HERE),
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"claude CLI exited {proc.returncode}\n{proc.stderr.strip()}"
+
+    def _call() -> subprocess.CompletedProcess:
+        p = subprocess.run(
+            [
+                CLAUDE_BIN, "-p", prompt,
+                "--output-format", "text",
+                "--permission-mode", "dontAsk",
+                "--model", CLAUDE_MODEL,
+            ],
+            capture_output=True, text=True, timeout=CLAUDE_TIMEOUT_S, cwd=str(HERE),
         )
+        if p.returncode != 0:
+            raise ClaudeError(f"claude CLI exited {p.returncode}\n{p.stderr.strip()}")
+        return p
+
+    proc = _retry(_call, attempts=2, base_delay=5,
+                  transient=(ClaudeError, subprocess.TimeoutExpired))
 
     entry = proc.stdout.strip()
     if entry.startswith("```"):
@@ -409,14 +487,16 @@ def main(argv: list[str] | None = None) -> int:
     log(f"{mode} start - week ending {anchor_date} ({start_s} -> {end_s} {RUN_TIMEZONE})")
 
     try:
-        digest, totals, active = gather_activity(start, anchor)
+        digest, totals, active, failed = gather_activity(start, anchor)
     except GatherError as exc:
         log(f"ERROR gathering GitHub activity: {exc}")
+        _record("error", str(exc), entry=anchor_date)
         return 1
 
     tot_line = (f"{totals['commits']} commits, {totals['repos_active']} active repos, "
                 f"{totals['issues']} issues, {totals['prs']} PRs")
-    log(f"gathered - {tot_line}; digest {len(digest)} chars")
+    log(f"gathered - {tot_line}; digest {len(digest)} chars"
+        + (f"; PARTIAL ({len(failed)} repo(s) failed: {', '.join(failed)})" if failed else ""))
 
     try:
         entry = generate_entry(
@@ -425,6 +505,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     except Exception as exc:  # noqa: BLE001 - keep the existing file intact
         log(f"ERROR: {exc}")
+        _record("error", str(exc), entry=anchor_date)
         return 1
 
     entry = link_repo_names(entry, active)
@@ -440,9 +521,27 @@ def main(argv: list[str] | None = None) -> int:
 
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_FILE.write_text(new_body)
-    log(f"wrote {OUTPUT_FILE.relative_to(PROJECTS_ROOT)} ({len(new_body)} bytes)")
+    detail = f"wrote {OUTPUT_FILE.relative_to(PROJECTS_ROOT)} ({len(new_body)} bytes)"
+    if failed:
+        detail += f"; PARTIAL - {len(failed)} repo(s) not fetched: {', '.join(failed)}"
+    log(detail)
+    _record("partial" if failed else "ok", detail, entry=anchor_date)
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    _started = dt.datetime.now().isoformat(timespec="seconds")
+    _code, _ran = 1, False
+    try:
+        _code = main()
+        _ran = True
+    except Exception as exc:  # noqa: BLE001 - record, then re-raise the exit
+        _record("error", f"uncaught: {exc!r}")
+        traceback.print_exc()
+        _ran = True
+    finally:
+        # skip on --help / bad args (SystemExit from argparse, _ran stays False)
+        # and on --dry-run (_LOG_TO_FILE is False)
+        if _ran and _LOG_TO_FILE:
+            write_state(_code, _started)
+    raise SystemExit(_code)
