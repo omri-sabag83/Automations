@@ -428,8 +428,11 @@ def gather_trends(anchor: dt.datetime) -> tuple[dict, dict, dict, list]:
     since = trend_start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
     until = anchor_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    repos = _gh_paged(f"/users/{GITHUB_USER}/repos",
-                      {"sort": "full_name", "type": "owner"})
+    # /user/repos (authenticated) also returns private repos; falls back to
+    # the public-only /users/{user}/repos listing when no GITHUB_TOKEN is set,
+    # so the automation keeps working even if the token is ever missing.
+    repo_list_endpoint = "/user/repos" if _github_token() else f"/users/{GITHUB_USER}/repos"
+    repos = _gh_paged(repo_list_endpoint, {"sort": "full_name", "type": "owner"})
     created = {
         r["name"]: _parse_iso(r["created_at"])
         for r in repos

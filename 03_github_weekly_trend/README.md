@@ -136,11 +136,23 @@ older entries are trimmed to prose and their charts are deleted.
 
 ## GitHub access
 
-The REST API is called **unauthenticated** — all repos are public and a weekly
-run is ~5–15 requests (`/commits` per repo across the 13-week window, bucketed
-by week client-side). To raise the limit or include private repos later, set
-`GITHUB_TOKEN` in the environment or add `GITHUB_TOKEN=...` to a gitignored
-`.env` in this folder.
+The REST API call is **unauthenticated by default** — fine while every repo is
+public, and a weekly run is only ~5–15 requests (`/commits` per repo across the
+13-week window, bucketed by week client-side).
+
+**Set `GITHUB_TOKEN`** (env var, or `GITHUB_TOKEN=...` in a gitignored `.env` in
+this folder) to raise the rate limit **and** bring private repos into scope:
+when a token is present, the repo list comes from `/user/repos` (the
+authenticated-user endpoint, includes private); with no token it falls back to
+the public-only `/users/{user}/repos` listing, so the automation keeps working
+either way. Token permissions needed (fine-grained PAT): **Contents: Read-only**,
+**Metadata: Read-only** (auto-included) — `Issues: Read-only` too if the token
+is ever shared with `02_github_weekly_summary`, which also reads issues/PRs.
+
+Adding a token doesn't touch history — every run still only replaces its own
+week's entry; a wider repo scope just applies to runs from that point on. The
+first run after adding one will show up to the full 13-week window for the
+newly-visible repos, since the trend chart always recomputes fresh each time.
 
 ## Failure handling
 
