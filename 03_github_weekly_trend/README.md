@@ -109,7 +109,7 @@ python run.py
 - **Safe to re-run.** A second run for the same week replaces that week's entry
   and its two charts.
 - On a GitHub API or `claude` failure the existing log is left untouched and the
-  script exits non-zero, with the error in [`logs/run.log`](logs/run.log).
+  script exits non-zero, with the error in `logs/run.log`.
 
 ## Testing on demand
 

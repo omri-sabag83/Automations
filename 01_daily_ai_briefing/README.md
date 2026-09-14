@@ -1,7 +1,7 @@
 # 01 — Daily AI & Data Analytics Briefing
 
 Generates one dated entry per day and **prepends** it to a running log:
-[`output/daily_ai_analytics_briefing.md`](output/daily_ai_analytics_briefing.md) (newest first).
+`output/daily_ai_analytics_briefing.md` (newest first).
 
 Each entry has four parts:
 
@@ -72,7 +72,7 @@ Runs the same code the scheduler runs. Use it for a manual catch-up or, with the
   day's entry instead of adding a duplicate — so testing is free.
 - If the `claude` call fails (network, auth, rate limit), the existing log is
   left untouched and the script exits non-zero with the error in
-  [`logs/run.log`](logs/run.log).
+  `logs/run.log`.
 
 ## Testing on demand
 

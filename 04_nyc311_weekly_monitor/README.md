@@ -2,7 +2,8 @@
 
 Every Sunday 09:00, produces one new **weekly monitoring report** on NYC 311
 service requests and writes it to a **separate deliverable repo**,
-[`../../NYC311 Weekly Monitor/Reports/`](../../NYC311%20Weekly%20Monitor/Reports/),
+[`NYC311 Weekly Monitor/Reports/`](https://github.com/omri-sabag83/NYC311-Weekly-Monitor/tree/main/Reports)
+(a separate, private repo — link only resolves for those with access),
 as `weekly_service_requests_YY_MM_DD.md` (the date is the report's own week
 start — the previous Sunday). One file per week, never aggregated, never
 pruned.
@@ -68,7 +69,7 @@ python run.py
   guardrail detects the existing report file and stops before any API or
   `claude` call.
 - On a data-check or `claude` failure, no report file is written and the
-  script exits non-zero, with the reason in [`logs/run.log`](logs/run.log)
+  script exits non-zero, with the reason in `logs/run.log`
   and `state/last_run.json`.
 
 ## Testing on demand
@@ -216,4 +217,4 @@ rm ~/Library/LaunchAgents/com.omrisabag.nyc311-weekly-monitor.plist
 | `output/charts/` | Chart-generation scratch/staging (cleared before every run). Local only (gitignored). |
 | `logs/run.log`, `logs/launchd.{out,err}.log` | Run + agent logs. Local only (gitignored). |
 | `state/last_run.json` | Last run's status. Local only (gitignored). |
-| [`../../NYC311 Weekly Monitor/Reports/`](../../NYC311%20Weekly%20Monitor/Reports/) | **The actual deliverable** — one Markdown report per week, plus a `charts/` folder of the PNGs they reference. Lives in a separate repo, not here. |
+| [`NYC311 Weekly Monitor/Reports/`](https://github.com/omri-sabag83/NYC311-Weekly-Monitor/tree/main/Reports) | **The actual deliverable** — one Markdown report per week, plus a `charts/` folder of the PNGs they reference. Lives in a separate, private repo, not here. |

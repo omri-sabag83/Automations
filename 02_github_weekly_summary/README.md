@@ -73,7 +73,7 @@ python run.py
   instead of adding a duplicate.
 - If the GitHub API or the `claude` call fails (rate limit, network, auth), the
   existing log is left untouched and the script exits non-zero with the error
-  in [`logs/run.log`](logs/run.log).
+  in `logs/run.log`.
 
 ## Testing on demand
 
