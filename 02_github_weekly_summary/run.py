@@ -291,7 +291,11 @@ def gather_activity(start: dt.datetime, end: dt.datetime) -> tuple[str, dict, li
     if REPOS:
         repo_names = list(REPOS)
     else:
-        repos = _gh_paged(f"/users/{GITHUB_USER}/repos", {"sort": "pushed", "type": "owner"})
+        # /user/repos (authenticated) also returns private repos; falls back
+        # to the public-only /users/{user}/repos listing when no GITHUB_TOKEN
+        # is set, so the automation keeps working either way.
+        repo_list_endpoint = "/user/repos" if _github_token() else f"/users/{GITHUB_USER}/repos"
+        repos = _gh_paged(repo_list_endpoint, {"sort": "pushed", "type": "owner"})
         repo_names = [r["name"] for r in repos if not r.get("archived")]
 
     totals = {"commits": 0, "repos_active": 0, "issues": 0, "prs": 0}

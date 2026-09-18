@@ -100,11 +100,21 @@ the grace) means that week is skipped — re-run it later with `--date`.
 
 ## GitHub access
 
-The REST API is called **unauthenticated** — all repos are public and a weekly
-run is well under the 60-requests/hour limit. To raise the limit or include
-private repos later, set `GITHUB_TOKEN` in the environment or add a
-`GITHUB_TOKEN=...` line to a gitignored `.env` in this folder; `run.py` picks it
-up automatically.
+The REST API call is **unauthenticated by default** — fine while every repo is
+public, and a weekly run is well under the 60-requests/hour limit.
+
+**Set `GITHUB_TOKEN`** (env var, or `GITHUB_TOKEN=...` in a gitignored `.env` in
+this folder) to raise the rate limit **and** bring private repos into scope:
+when a token is present, the repo list comes from `/user/repos` (the
+authenticated-user endpoint, includes private); with no token it falls back to
+the public-only `/users/{user}/repos` listing, so the automation keeps working
+either way. Token permissions needed (fine-grained PAT): **Contents:
+Read-only**, **Issues: Read-only** (this automation reads issues/PRs, unlike
+`03_github_weekly_trend`), **Metadata: Read-only** (auto-included). The same
+token used by `03_github_weekly_trend` works here too — just copy its `.env`.
+
+Adding a token doesn't touch history — every run still only replaces its own
+week's entry; a wider repo scope just applies to runs from that point on.
 
 ## Failure handling
 
