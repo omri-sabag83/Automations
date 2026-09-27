@@ -3,7 +3,10 @@
 Automation #04 — NYC 311 weekly service-request monitor.
 
 Scheduled by a launch agent (schedule/com.omrisabag.nyc311-weekly-monitor.plist)
-every Sunday at 09:00 Asia/Jerusalem. Can also be run by hand:
+every Monday at 09:00 Asia/Jerusalem (moved from Sunday 2026-09-27 — the extra
+~24h gives the Socrata feed more time to finish ingesting the window's final
+day; see "How the window works" below — the analyzed week is unaffected).
+Can also be run by hand:
 
     python run.py                       # analyze last week, write the report
     python run.py --dry-run             # write output/_preview.md only; real Reports/ untouched
@@ -73,9 +76,9 @@ from zoneinfo import ZoneInfo
 # DATA_TZ / week_window() below) — deliberately independent of this.
 RUN_MODE = "scheduled"           # "manual" | "scheduled" (launchd agent installed)
 RUN_TIME_LOCAL = "09:00"
-RUN_DOW = "Sun"
+RUN_DOW = "Mon"                  # was "Sun" until 2026-09-27 (Socrata lag fix)
 RUN_TIMEZONE = "Asia/Jerusalem"  # follows the Mac's timezone; governs the trigger only
-RUN_WEEKDAY = 6                  # Mon=0..Sun=6
+RUN_WEEKDAY = 0                  # Mon=0..Sun=6
 RUN_HOUR, RUN_MINUTE = 9, 0
 
 # The NYC 311 dataset's own timezone — every date-window computation and

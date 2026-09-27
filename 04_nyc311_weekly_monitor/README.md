@@ -1,6 +1,6 @@
 # 04 — NYC 311 Weekly Monitor
 
-Every Sunday 09:00, produces one new **weekly monitoring report** on NYC 311
+Every Monday 09:00, produces one new **weekly monitoring report** on NYC 311
 service requests and writes it to a **separate deliverable repo**,
 [`NYC311 Weekly Monitor/Reports/`](https://github.com/omri-sabag83/NYC311-Weekly-Monitor/tree/main/Reports)
 (a separate, private repo — link only resolves for those with access),
@@ -52,7 +52,7 @@ match it.
 | Setting | Value |
 |---|---|
 | Mode | **Scheduled** — macOS launch agent `com.omrisabag.nyc311-weekly-monitor` |
-| Day / time | **Sunday 09:00**, system-local (the Mac is on Asia/Jerusalem; the time follows the Mac's timezone) — this governs only *when the job fires*, not the data window (see *How the window works*) |
+| Day / time | **Monday 09:00**, system-local (the Mac is on Asia/Jerusalem; the time follows the Mac's timezone) — this governs only *when the job fires*, not the data window (see *How the window works*). Moved from Sunday 2026-09-27: both real weeks run at the original Sunday timing hit the same NYC 311 source-data lag on the window's final day (~23h and ~26h of lag observed, see *Caveats & Data Quality* in the `26_09_13` and `26_09_20` reports); the extra ~24h buffer reduces how often that recurs, but doesn't guarantee it — the report's own lag self-detection (see *Engine*) is still the real safety net. |
 | Also runnable by hand | `python run.py` (and the `--dry-run` / `--date` / `--print-prompt` test flags) |
 
 **To change the day or time, ask Claude** — it updates the `run.py` block,
@@ -89,8 +89,9 @@ NYC 311 dataset's own timezone — independent of the Mac's timezone or when
 launchd actually fires the job. `week_end` = the most recent Sunday 00:00
 America/New_York at/before the anchor (`--date`, or today); `week_start =
 week_end − 7 days`. The report filename's date is `week_start`. Because this
-is a pure function of the calendar date, a Sunday scheduled run and a
-Monday/Tuesday manual re-run resolve to the identical week and filename —
+is a pure function of the calendar date, the Monday scheduled run and any
+later manual re-run (Tuesday, Wednesday, ...) resolve to the identical week
+and filename, as long as no *new* Sunday boundary has passed in between —
 that's what makes the duplicate check a plain file-existence check.
 
 ## Engine — why this one is different
@@ -180,7 +181,7 @@ rather than pulling raw rows.
 ## How it's scheduled
 
 A launch agent, [`schedule/com.omrisabag.nyc311-weekly-monitor.plist`](schedule/com.omrisabag.nyc311-weekly-monitor.plist):
-`StartCalendarInterval` Weekday 0 (Sunday) 09:00, absolute paths, a `PATH` so
+`StartCalendarInterval` Weekday 1 (Monday) 09:00, absolute paths, a `PATH` so
 `python` / `claude` resolve, stdout/stderr to `logs/launchd.{out,err}.log`. A
 slot missed while asleep runs on the next wake.
 
@@ -192,7 +193,7 @@ launchctl bootout  gui/$(id -u)/com.omrisabag.nyc311-weekly-monitor 2>/dev/null 
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.omrisabag.nyc311-weekly-monitor.plist
 ```
 
-**Verify without waiting for Sunday:**
+**Verify without waiting for Monday:**
 
 ```bash
 launchctl kickstart -k gui/$(id -u)/com.omrisabag.nyc311-weekly-monitor

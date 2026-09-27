@@ -21,3 +21,8 @@ config.local.*
 # ignore the contents, not the dir itself, so .gitkeep can be re-included
 */output/*
 !*/output/.gitkeep
+
+# scratch data an automation writes for itself while analyzing (e.g. 04's
+# claude subprocess saving intermediate query results) — not a deliverable,
+# whole folder ignored, nothing to keep present on a fresh clone
+*/data/

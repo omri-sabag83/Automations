@@ -22,13 +22,15 @@
         <string>/opt/anaconda3/bin:/Users/omrisabag/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     </dict>
 
-    <!-- Weekly, Sunday 09:00. launchd Weekday: 0 = Sunday .. 6 = Saturday.
+    <!-- Weekly, Monday 09:00 (was Sunday until 2026-09-27 — moved to give the
+         Socrata feed ~24h more to finish ingesting the window's final day).
+         launchd Weekday: 0 = Sunday .. 6 = Saturday, so Monday = 1.
          Fires at the Mac's current timezone; a slot missed while asleep
          runs on the next wake. -->
     <key>StartCalendarInterval</key>
     <dict>
         <key>Weekday</key>
-        <integer>0</integer>
+        <integer>1</integer>
         <key>Hour</key>
         <integer>9</integer>
         <key>Minute</key>
