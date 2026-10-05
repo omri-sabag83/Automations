@@ -127,7 +127,8 @@ every analysis attempt (dry-run or real), so a previous test's leftovers can
 never be mistaken for the current run's. On a successful **real** run,
 `run.py` copies every referenced PNG into
 `NYC311 Weekly Monitor/Reports/charts/` (so the reference resolves from the
-report's real location), then clears the scratch copies and any stale
+report's real location), adds the standard thin black frame to each copy
+(skipped with a warning if it fails, never failing the run), then clears the scratch copies and any stale
 `output/_preview.md` — nothing scratch is left sitting next to a just-published
 report. On `--dry-run`, the charts simply stay in `output/charts/`, which
 already sits next to `output/_preview.md`, so the reference resolves in

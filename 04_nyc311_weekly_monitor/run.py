@@ -60,6 +60,7 @@ import random
 import re
 import shutil
 import subprocess
+import sys
 import time
 import traceback
 import urllib.error
@@ -527,14 +528,38 @@ def _reset_charts_staging() -> None:
         p.unlink()
 
 
+CHART_DISPLAY_MAX_PX = 800   # chosen: about the width the reports display charts at
+CHART_MARGIN_PX = 8
+CHART_FRAME_PX = 2
+
+
+def _frame_chart(path: Path) -> None:
+    """Add a white margin and a thin black frame around a chart PNG (the
+    portfolio-wide chart style), so it stands out on GitHub's white page.
+    Charts wider than the display column get a proportionally thicker frame,
+    so it looks the same after the viewer shrinks them. Never fails the run:
+    on any error the chart is kept unframed."""
+    try:
+        from PIL import Image, ImageOps
+        img = Image.open(path)
+        grow = max(1.0, img.size[0] / CHART_DISPLAY_MAX_PX)
+        img = ImageOps.expand(img, border=max(CHART_MARGIN_PX, round(CHART_MARGIN_PX * grow)), fill="white")
+        img = ImageOps.expand(img, border=max(CHART_FRAME_PX, round(CHART_FRAME_PX * grow)), fill="black")
+        img.save(path, format="PNG")
+    except Exception as exc:  # noqa: BLE001 - cosmetic step, must not break the report
+        print(f"warning: could not frame chart {path.name}: {exc}", file=sys.stderr)
+
+
 def _finalize_charts(text: str) -> None:
     """Real-run only: copy this run's referenced charts into the deliverable
-    repo, then clear the scratch staging dir and any stale dry-run preview."""
+    repo (each with the standard frame), then clear the scratch staging dir and
+    any stale dry-run preview."""
     referenced = _CHART_REF_RE.findall(text)
     if referenced:
         REPORT_CHARTS_DIR.mkdir(parents=True, exist_ok=True)
         for name in referenced:
             shutil.copy2(CHARTS_STAGING_DIR / name, REPORT_CHARTS_DIR / name)
+            _frame_chart(REPORT_CHARTS_DIR / name)
     for p in CHARTS_STAGING_DIR.glob("*.png"):
         p.unlink()
     if PREVIEW_FILE.exists():
