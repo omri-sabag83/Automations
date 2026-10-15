@@ -161,6 +161,12 @@ rather than pulling raw rows.
   / connection errors; the `claude` call retries once. Malformed/invalid
   model output (fails the validation checks above) is not retried — it's
   recorded as an error for review.
+- **Preamble salvage** — despite the prompt explicitly forbidding it, a real
+  run (2026-10-12) still returned verification commentary ahead of the
+  report. If the required `# Executive Summary` heading shows up later in
+  the text, everything before it is stripped rather than failing the whole
+  run; if the heading never appears at all, this changes nothing and the
+  existing validation error still fires.
 - **`state/last_run.json`** — written on every real run (not `--dry-run`):
 
   ```json

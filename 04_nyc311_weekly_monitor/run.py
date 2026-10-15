@@ -464,11 +464,30 @@ def run_analysis(key: str, week_start_s: str, week_end_s: str, generated_at_s: s
         text = text.split("\n", 1)[1] if "\n" in text else ""
         text = text.rstrip().removesuffix("```").rstrip()
 
+    text = _salvage_leading_preamble(text)
     _validate_report(text, week_start_s, week_end_s, generated_at_s, count_s)
     return text
 
 
 _CHART_REF_RE = re.compile(r"\]\(charts/([^)\s]+\.png)\)")
+
+
+def _salvage_leading_preamble(text: str) -> str:
+    """Despite the prompt's explicit "nothing before the heading" instruction,
+    a real run (2026-10-12) still had Claude narrate the verification outcome
+    ahead of the report. If the required heading shows up later in the text,
+    cut everything before it rather than failing the whole run over a
+    preamble. If the heading never appears at all, return text unchanged so
+    _validate_report's existing error still fires correctly."""
+    if text.startswith("# Executive Summary"):
+        return text
+    idx = text.find("\n# Executive Summary")
+    if idx == -1:
+        return text
+    preamble, salvaged = text[:idx], text[idx + 1:]
+    log(f"salvaged report - stripped {len(preamble)} leading chars of preamble "
+        f"before the heading: {preamble[:120]!r}...")
+    return salvaged
 
 
 def _validate_report(text: str, week_start_s: str, week_end_s: str,
