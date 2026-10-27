@@ -205,6 +205,10 @@ def normalize_variant(name: str) -> str:
     return v
 
 
+EXCLUDE_ARTISTS = {"Various Artists"}  # not a real artist - a MusicBrainz
+                                       # catch-all with a huge discography
+
+
 def read_watch_list() -> list[str]:
     music = pd.read_excel(
         WATCHLIST_XLSX, sheet_name=WATCHLIST_MUSIC_SHEET, header=0,
@@ -217,7 +221,8 @@ def read_watch_list() -> list[str]:
     ).iloc[:, 0].dropna().astype(str)
     listen_artists = listen.str.split(" - ", n=1).str[0].str.strip()
 
-    combined = sorted({a for a in set(music) | set(listen_artists) if a})
+    combined = sorted({a for a in set(music) | set(listen_artists) if a}
+                       - EXCLUDE_ARTISTS)
     return combined
 
 
